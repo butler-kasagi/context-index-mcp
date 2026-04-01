@@ -1,0 +1,14 @@
+{
+  "name": "context-index-mcp",
+  "version": "1.0.0",
+  "description": "Lightweight keyword-to-file context index MCP server for AI agents",
+  "main": "index.js",
+  "author": {
+    "name": "Marcus Low Wern Chien",
+    "email": "marcuslowwernchien@gmail.com"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  }
+}
