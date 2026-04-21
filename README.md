@@ -77,17 +77,19 @@ cd context-index-mcp
 npm install
 ```
 
+Recommended install location: inside your agent's workspace, e.g. `workspace/mcp-servers/context-index/`.
+
 ---
 
 ## Configuration
 
-### With mcporter
+### Single Agent — With mcporter
 
-Add to your mcporter config:
+Add to your `config/mcporter.json`:
 
 ```json
 {
-  "servers": {
+  "mcpServers": {
     "context-index": {
       "command": "node",
       "args": ["/path/to/context-index-mcp/index.js"]
@@ -96,11 +98,91 @@ Add to your mcporter config:
 }
 ```
 
+The server defaults to `process.cwd()` as the workspace root and looks for `index.json` next to `index.js`. If mcporter is launched from your workspace directory, everything resolves correctly with no extra config.
+
 Then call tools via:
 ```bash
-mcporter call context-index.lookup query="your search terms"
-mcporter call context-index.add title="..." file="..." tags='["tag1","tag2"]' description="..."
+mcporter call context-index lookup --args '{"query":"your search terms"}'
+mcporter call context-index add --args '{"title":"...", "file":"context/...", "tags":["tag1","tag2"], "description":"..."}'
+mcporter call context-index list
 ```
+
+### Multi-Agent Setup (Shared Server, Separate Indexes)
+
+Multiple agents on the same machine can share **one copy of `index.js`** while each maintaining their own `index.json` and workspace. Use env vars to point each agent at its own data:
+
+```
+workspace/
+└── mcp-servers/
+    └── context-index/
+        └── index.js          ← shared server binary (one copy)
+
+workspace-agent-a/
+└── mcp-servers/context-index/
+    └── index.json            ← agent A's index
+
+workspace-agent-b/
+└── mcp-servers/context-index/
+    └── index.json            ← agent B's index
+```
+
+In **Agent A's** `config/mcporter.json`:
+```json
+{
+  "mcpServers": {
+    "context-index": {
+      "command": "node",
+      "args": ["/path/to/shared/context-index-mcp/index.js"],
+      "env": {
+        "CONTEXT_INDEX_WORKSPACE": "/path/to/workspace-agent-a",
+        "CONTEXT_INDEX_PATH": "/path/to/workspace-agent-a/mcp-servers/context-index/index.json"
+      }
+    }
+  }
+}
+```
+
+In **Agent B's** `config/mcporter.json`:
+```json
+{
+  "mcpServers": {
+    "context-index": {
+      "command": "node",
+      "args": ["/path/to/shared/context-index-mcp/index.js"],
+      "env": {
+        "CONTEXT_INDEX_WORKSPACE": "/path/to/workspace-agent-b",
+        "CONTEXT_INDEX_PATH": "/path/to/workspace-agent-b/mcp-servers/context-index/index.json"
+      }
+    }
+  }
+}
+```
+
+**Env vars:**
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `CONTEXT_INDEX_WORKSPACE` | Root path that file entries resolve against | `process.cwd()` |
+| `CONTEXT_INDEX_PATH` | Path to the `index.json` data file | `index.json` next to `index.js` |
+
+### With OpenClaw
+
+Add to the agent's `openclaw.json`:
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "context-index": {
+        "command": "node",
+        "args": ["/path/to/context-index-mcp/index.js"]
+      }
+    }
+  }
+}
+```
+
+For multi-agent OpenClaw setups, use mcporter's per-agent `config/mcporter.json` with env vars (see above) rather than the global `openclaw.json`.
 
 ### With Claude Desktop / any MCP client
 
