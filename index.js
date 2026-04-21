@@ -11,8 +11,9 @@ const { CallToolRequestSchema, ListToolsRequestSchema } = require('@modelcontext
 const fs = require('fs');
 const path = require('path');
 
-const INDEX_PATH = path.join(__dirname, 'index.json');
-const WORKSPACE = '/Users/butler/.openclaw/workspace';
+const DEFAULT_WORKSPACE = '/Users/butler/.openclaw/workspace';
+const WORKSPACE = process.env.CONTEXT_INDEX_WORKSPACE || DEFAULT_WORKSPACE;
+const INDEX_PATH = process.env.CONTEXT_INDEX_PATH || path.join(__dirname, 'index.json');
 
 // Load or init index
 function loadIndex() {
