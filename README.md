@@ -109,49 +109,79 @@ mcporter call context-index list
 
 ### Multi-Agent Setup (Shared Server, Separate Indexes)
 
-Multiple agents on the same machine can share **one copy of `index.js`** while each maintaining their own `index.json` and workspace. Use env vars to point each agent at its own data:
+In an OpenClaw multi-agent setup, **each agent has its own workspace directory** and its own `config/mcporter.json`. The key insight is:
 
+- The **server binary** (`index.js`) lives in one place — usually the primary agent's workspace
+- Each agent's **`config/mcporter.json`** points to that shared binary, but overrides the workspace and index path via env vars so each agent reads and writes its own isolated data
+
+**Directory layout (real example):**
 ```
-workspace/
-└── mcp-servers/
-    └── context-index/
-        └── index.js          ← shared server binary (one copy)
-
-workspace-agent-a/
-└── mcp-servers/context-index/
-    └── index.json            ← agent A's index
-
-workspace-agent-b/
-└── mcp-servers/context-index/
-    └── index.json            ← agent B's index
+~/.openclaw/
+├── workspace/                          ← Butler (primary agent)
+│   ├── config/mcporter.json            ← Butler's mcporter config
+│   ├── mcp-servers/
+│   │   └── context-index/
+│   │       ├── index.js                ← shared server binary (one copy)
+│   │       └── index.json              ← Butler's index data
+│   └── context/
+│       └── *.md                        ← Butler's context files
+│
+├── workspace-starrk/                   ← Starrk (secondary agent)
+│   ├── config/mcporter.json            ← Starrk's mcporter config (separate file!)
+│   ├── mcp-servers/context-index/
+│   │   └── index.json                  ← Starrk's index data (separate!)
+│   └── context/
+│       └── *.md                        ← Starrk's context files
+│
+└── workspace-agent-c/                  ← Agent C (any future agent)
+    ├── config/mcporter.json            ← Agent C's mcporter config
+    ├── mcp-servers/context-index/
+    │   └── index.json                  ← Agent C's index data
+    └── context/
+        └── *.md
 ```
 
-In **Agent A's** `config/mcporter.json`:
+> **Key rule:** Every workspace has its own `config/mcporter.json`. This is what makes each agent independent — they share the server code but have completely isolated indexes and workspace scopes.
+
+**Butler's** `~/.openclaw/workspace/config/mcporter.json`:
 ```json
 {
   "mcpServers": {
     "context-index": {
       "command": "node",
-      "args": ["/path/to/shared/context-index-mcp/index.js"],
+      "args": ["/Users/you/.openclaw/workspace/mcp-servers/context-index/index.js"]
+    }
+  }
+}
+```
+*(No env vars needed — cwd is Butler's workspace, index.json is next to index.js by default)*
+
+**Starrk's** `~/.openclaw/workspace-starrk/config/mcporter.json`:
+```json
+{
+  "mcpServers": {
+    "context-index": {
+      "command": "node",
+      "args": ["/Users/you/.openclaw/workspace/mcp-servers/context-index/index.js"],
       "env": {
-        "CONTEXT_INDEX_WORKSPACE": "/path/to/workspace-agent-a",
-        "CONTEXT_INDEX_PATH": "/path/to/workspace-agent-a/mcp-servers/context-index/index.json"
+        "CONTEXT_INDEX_WORKSPACE": "/Users/you/.openclaw/workspace-starrk",
+        "CONTEXT_INDEX_PATH": "/Users/you/.openclaw/workspace-starrk/mcp-servers/context-index/index.json"
       }
     }
   }
 }
 ```
 
-In **Agent B's** `config/mcporter.json`:
+**Agent C's** `~/.openclaw/workspace-agent-c/config/mcporter.json`:
 ```json
 {
   "mcpServers": {
     "context-index": {
       "command": "node",
-      "args": ["/path/to/shared/context-index-mcp/index.js"],
+      "args": ["/Users/you/.openclaw/workspace/mcp-servers/context-index/index.js"],
       "env": {
-        "CONTEXT_INDEX_WORKSPACE": "/path/to/workspace-agent-b",
-        "CONTEXT_INDEX_PATH": "/path/to/workspace-agent-b/mcp-servers/context-index/index.json"
+        "CONTEXT_INDEX_WORKSPACE": "/Users/you/.openclaw/workspace-agent-c",
+        "CONTEXT_INDEX_PATH": "/Users/you/.openclaw/workspace-agent-c/mcp-servers/context-index/index.json"
       }
     }
   }
@@ -162,8 +192,10 @@ In **Agent B's** `config/mcporter.json`:
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `CONTEXT_INDEX_WORKSPACE` | Root path that file entries resolve against | `process.cwd()` |
+| `CONTEXT_INDEX_WORKSPACE` | Root path that file entries resolve against in `lookup` results | `process.cwd()` |
 | `CONTEXT_INDEX_PATH` | Path to the `index.json` data file | `index.json` next to `index.js` |
+
+> **Tip:** If you're setting up a new agent, create its `index.json` as an empty `{"entries":[]}` first, then populate it using `mcporter call context-index add` for each context file in that agent's workspace.
 
 ### With OpenClaw
 
