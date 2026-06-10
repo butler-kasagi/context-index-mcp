@@ -114,7 +114,13 @@ Add to your `config/mcporter.json`:
 }
 ```
 
-> **Always set `CONTEXT_INDEX_WORKSPACE` explicitly.** Without it the server falls back to `process.cwd()`, and MCP launchers often spawn servers from an arbitrary directory (e.g. a `config/` subfolder) — then every relative path resolves wrong and `doctor` reports all entries as missing. The `index.json` data file defaults to sitting next to `index.js`; override with `CONTEXT_INDEX_PATH` if needed.
+> **Setting `CONTEXT_INDEX_WORKSPACE` explicitly is still recommended**, but if it's unset the server infers the workspace instead of blindly trusting `process.cwd()` (MCP launchers often spawn servers from an arbitrary directory, e.g. a `config/` subfolder). Inference order:
+> 1. `CONTEXT_INDEX_WORKSPACE` env var — always wins when set
+> 2. The ancestor directory (of the cwd or of the index file) where the most index entries resolve to real files
+> 3. The nearest ancestor containing a `context/` directory (covers brand-new agents with an empty index)
+> 4. `process.cwd()` as a last resort — `doctor` will tell you if this guessed wrong
+>
+> `doctor` always shows which workspace was resolved and how. The `index.json` data file defaults to sitting next to `index.js`; override with `CONTEXT_INDEX_PATH`.
 
 Then call tools via:
 ```bash
@@ -211,7 +217,7 @@ In an OpenClaw multi-agent setup, **each agent has its own workspace directory**
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `CONTEXT_INDEX_WORKSPACE` | Root path that file entries resolve against in `lookup` results | `process.cwd()` — unreliable under MCP launchers, always set this |
+| `CONTEXT_INDEX_WORKSPACE` | Root path that file entries resolve against in `lookup` results | Inferred from where index entries resolve / nearest `context/` dir; `process.cwd()` as last resort |
 | `CONTEXT_INDEX_PATH` | Path to the `index.json` data file | `index.json` next to `index.js` |
 
 > **Tip:** If you're setting up a new agent, just start calling `mcporter call context-index add` — the `index.json` is created automatically on the first add. Run `doctor` afterwards to spot any context files you forgot to index.
