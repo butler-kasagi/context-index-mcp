@@ -1,1 +1,4 @@
 node_modules/
+index.json
+index.json.tmp
+index.json.corrupt-*
