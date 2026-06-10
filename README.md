@@ -1,6 +1,6 @@
 # context-index-mcp
 
-A lightweight, zero-dependency context index MCP server for AI agents.
+A lightweight context index MCP server for AI agents. No external services, no embeddings, no API keys — just a JSON file and a scoring function.
 
 **Author:** Marcus Low Wern Chien (marcuslowwernchien@gmail.com)
 
@@ -39,7 +39,7 @@ Returns the top 5 matching entries with file paths and instructions to read them
 ---
 
 ### `add`
-Add or update an entry in the index. Uses `file` as the unique key (upsert).
+Add or update an entry in the index. Uses `file` as the unique key (upsert). On update, omitted optional fields (like `note`) are preserved — pass `"note": ""` to explicitly clear a note. Warns if the file doesn't exist on disk (typo protection).
 
 ```json
 {
@@ -69,6 +69,15 @@ Remove an entry by file path.
 
 ---
 
+### `doctor`
+Check index health. Reports:
+- Entries whose files no longer exist on disk (stale entries)
+- `context/**/*.md` files in the workspace that aren't indexed yet
+
+Run it occasionally to keep the index and the filesystem in sync.
+
+---
+
 ## Installation
 
 ```bash
@@ -78,6 +87,10 @@ npm install
 ```
 
 Recommended install location: inside your agent's workspace, e.g. `workspace/mcp-servers/context-index/`.
+
+`index.json` is **not** shipped in the repo (it's gitignored) — your data file can never be overwritten by a `git pull`. The server starts with an empty index if the file is missing and creates it on the first `add`.
+
+> **Upgrading from ≤1.0?** `index.json` used to be tracked by git. If your local copy has entries, `git pull` will refuse with "your local changes would be overwritten" — copy your `index.json` aside, pull, then put it back. Your data format is unchanged; no migration needed.
 
 ---
 
@@ -195,7 +208,7 @@ In an OpenClaw multi-agent setup, **each agent has its own workspace directory**
 | `CONTEXT_INDEX_WORKSPACE` | Root path that file entries resolve against in `lookup` results | `process.cwd()` |
 | `CONTEXT_INDEX_PATH` | Path to the `index.json` data file | `index.json` next to `index.js` |
 
-> **Tip:** If you're setting up a new agent, create its `index.json` as an empty `{"entries":[]}` first, then populate it using `mcporter call context-index add` for each context file in that agent's workspace.
+> **Tip:** If you're setting up a new agent, just start calling `mcporter call context-index add` — the `index.json` is created automatically on the first add. Run `doctor` afterwards to spot any context files you forgot to index.
 
 ### With OpenClaw
 
@@ -252,7 +265,9 @@ Add to your MCP client config:
 }
 ```
 
-The `file` field is the unique key. Paths are relative to your workspace root (configurable in `index.js` via the `WORKSPACE` constant).
+The `file` field is the unique key. Paths are relative to your workspace root (set via the `CONTEXT_INDEX_WORKSPACE` env var, defaults to the server's working directory).
+
+Writes are atomic (temp file + rename), so a crash can't corrupt the index. If the file is ever hand-edited into invalid JSON, the server backs up the broken file as `index.json.corrupt-<timestamp>` and reports a clear error instead of silently starting over. External edits to `index.json` are picked up automatically (the in-memory cache invalidates on file mtime change).
 
 ---
 
@@ -263,11 +278,16 @@ Entries are ranked by weighted keyword matching:
 | Match type | Score |
 |---|---|
 | Exact tag match | +4 |
-| Tag contains term | +2 |
-| Title contains term | +2 |
-| Description contains term | +1 |
+| Tag word match | +2 |
+| Title word match | +2 |
+| Description word match | +1 |
+| Note word match | +1 |
+
+Matching is word-boundary based with prefix tolerance: `"deploying"` matches the tag `deploy`, but short fragments don't match mid-word (`"api"` will not match `"rapid"`).
 
 Score is then multiplied by the fraction of query terms that matched at least one field, penalising entries that only match 1 of 5 search terms.
+
+Lookup results flag entries whose files no longer exist on disk and show how long ago each entry was last updated, so the agent knows when context might be stale.
 
 ---
 
