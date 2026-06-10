@@ -11,8 +11,57 @@ const { CallToolRequestSchema, ListToolsRequestSchema } = require('@modelcontext
 const fs = require('fs');
 const path = require('path');
 
-const WORKSPACE = process.env.CONTEXT_INDEX_WORKSPACE || process.cwd();
 const INDEX_PATH = process.env.CONTEXT_INDEX_PATH || path.join(__dirname, 'index.json');
+
+// Workspace resolution. CONTEXT_INDEX_WORKSPACE always wins; without it the
+// launcher's cwd is unreliable (MCP clients spawn servers from arbitrary
+// directories), so infer the root from evidence instead of trusting cwd:
+// the directory where index entries actually resolve to real files, or
+// failing that, the nearest ancestor that holds a context/ directory.
+function resolveWorkspace() {
+  if (process.env.CONTEXT_INDEX_WORKSPACE) {
+    return { root: process.env.CONTEXT_INDEX_WORKSPACE, source: 'CONTEXT_INDEX_WORKSPACE env var' };
+  }
+
+  const candidates = [];
+  for (const start of [process.cwd(), path.dirname(INDEX_PATH)]) {
+    let dir = path.resolve(start);
+    for (let i = 0; i < 8; i++) {
+      if (!candidates.includes(dir)) candidates.push(dir);
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  }
+
+  let entries = [];
+  try {
+    const parsed = JSON.parse(fs.readFileSync(INDEX_PATH, 'utf8'));
+    if (Array.isArray(parsed.entries)) entries = parsed.entries.slice(0, 50);
+  } catch { /* no readable index yet — fall through to the marker heuristic */ }
+
+  const relative = entries.filter(e => e.file && !path.isAbsolute(e.file));
+  if (relative.length > 0) {
+    let best = null, bestHits = 0;
+    for (const c of candidates) {
+      const hits = relative.filter(e => fs.existsSync(path.join(c, e.file))).length;
+      if (hits > bestHits) { best = c; bestHits = hits; }
+    }
+    if (best) return { root: best, source: `inferred — ${bestHits}/${relative.length} index entries resolve here` };
+  }
+
+  for (const c of candidates) {
+    try {
+      if (fs.statSync(path.join(c, 'context')).isDirectory()) {
+        return { root: c, source: 'inferred — nearest ancestor containing a context/ directory' };
+      }
+    } catch { /* keep walking */ }
+  }
+
+  return { root: process.cwd(), source: 'process cwd fallback — set CONTEXT_INDEX_WORKSPACE to be explicit' };
+}
+
+const { root: WORKSPACE, source: WORKSPACE_SOURCE } = resolveWorkspace();
 
 // Cache is invalidated on mtime change so external edits (or a second server
 // process pointed at the same file) are picked up instead of overwritten.
@@ -289,12 +338,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         .map(f => path.relative(WORKSPACE, f));
     }
 
-    const lines = [`Index health (${index.entries.length} entries, workspace: ${WORKSPACE})`];
+    const lines = [`Index health (${index.entries.length} entries, workspace: ${WORKSPACE} [${WORKSPACE_SOURCE}])`];
     if (index.entries.length > 0 && missing.length === index.entries.length) {
       lines.push(
         '',
         '🚨 ALL entries point to missing files — the workspace root is almost certainly wrong, not the index.',
-        `   Current workspace: ${WORKSPACE}${process.env.CONTEXT_INDEX_WORKSPACE ? ' (from CONTEXT_INDEX_WORKSPACE)' : ' (defaulted to the server process cwd — launchers often spawn MCP servers from an arbitrary directory)'}`,
+        `   Current workspace: ${WORKSPACE} (${WORKSPACE_SOURCE})`,
         '   Fix: set the CONTEXT_INDEX_WORKSPACE env var in the MCP server config to the agent\'s workspace root.'
       );
     } else if (missing.length > 0) {
