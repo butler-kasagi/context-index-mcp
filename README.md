@@ -105,13 +105,16 @@ Add to your `config/mcporter.json`:
   "mcpServers": {
     "context-index": {
       "command": "node",
-      "args": ["/path/to/context-index-mcp/index.js"]
+      "args": ["/path/to/context-index-mcp/index.js"],
+      "env": {
+        "CONTEXT_INDEX_WORKSPACE": "/path/to/your/workspace"
+      }
     }
   }
 }
 ```
 
-The server defaults to `process.cwd()` as the workspace root and looks for `index.json` next to `index.js`. If mcporter is launched from your workspace directory, everything resolves correctly with no extra config.
+> **Always set `CONTEXT_INDEX_WORKSPACE` explicitly.** Without it the server falls back to `process.cwd()`, and MCP launchers often spawn servers from an arbitrary directory (e.g. a `config/` subfolder) — then every relative path resolves wrong and `doctor` reports all entries as missing. The `index.json` data file defaults to sitting next to `index.js`; override with `CONTEXT_INDEX_PATH` if needed.
 
 Then call tools via:
 ```bash
@@ -162,12 +165,15 @@ In an OpenClaw multi-agent setup, **each agent has its own workspace directory**
   "mcpServers": {
     "context-index": {
       "command": "node",
-      "args": ["/Users/you/.openclaw/workspace/mcp-servers/context-index/index.js"]
+      "args": ["/Users/you/.openclaw/workspace/mcp-servers/context-index/index.js"],
+      "env": {
+        "CONTEXT_INDEX_WORKSPACE": "/Users/you/.openclaw/workspace"
+      }
     }
   }
 }
 ```
-*(No env vars needed — cwd is Butler's workspace, index.json is next to index.js by default)*
+*(Set the workspace explicitly even for the primary agent — don't rely on the launcher's cwd)*
 
 **Starrk's** `~/.openclaw/workspace-starrk/config/mcporter.json`:
 ```json
@@ -205,7 +211,7 @@ In an OpenClaw multi-agent setup, **each agent has its own workspace directory**
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `CONTEXT_INDEX_WORKSPACE` | Root path that file entries resolve against in `lookup` results | `process.cwd()` |
+| `CONTEXT_INDEX_WORKSPACE` | Root path that file entries resolve against in `lookup` results | `process.cwd()` — unreliable under MCP launchers, always set this |
 | `CONTEXT_INDEX_PATH` | Path to the `index.json` data file | `index.json` next to `index.js` |
 
 > **Tip:** If you're setting up a new agent, just start calling `mcporter call context-index add` — the `index.json` is created automatically on the first add. Run `doctor` afterwards to spot any context files you forgot to index.
@@ -220,7 +226,10 @@ Add to the agent's `openclaw.json`:
     "servers": {
       "context-index": {
         "command": "node",
-        "args": ["/path/to/context-index-mcp/index.js"]
+        "args": ["/path/to/context-index-mcp/index.js"],
+        "env": {
+          "CONTEXT_INDEX_WORKSPACE": "/path/to/agent/workspace"
+        }
       }
     }
   }
@@ -238,7 +247,10 @@ Add to your MCP client config:
   "mcpServers": {
     "context-index": {
       "command": "node",
-      "args": ["/path/to/context-index-mcp/index.js"]
+      "args": ["/path/to/context-index-mcp/index.js"],
+      "env": {
+        "CONTEXT_INDEX_WORKSPACE": "/path/to/your/workspace"
+      }
     }
   }
 }

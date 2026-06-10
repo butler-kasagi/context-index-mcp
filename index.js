@@ -290,7 +290,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     const lines = [`Index health (${index.entries.length} entries, workspace: ${WORKSPACE})`];
-    if (missing.length > 0) {
+    if (index.entries.length > 0 && missing.length === index.entries.length) {
+      lines.push(
+        '',
+        '🚨 ALL entries point to missing files — the workspace root is almost certainly wrong, not the index.',
+        `   Current workspace: ${WORKSPACE}${process.env.CONTEXT_INDEX_WORKSPACE ? ' (from CONTEXT_INDEX_WORKSPACE)' : ' (defaulted to the server process cwd — launchers often spawn MCP servers from an arbitrary directory)'}`,
+        '   Fix: set the CONTEXT_INDEX_WORKSPACE env var in the MCP server config to the agent\'s workspace root.'
+      );
+    } else if (missing.length > 0) {
       lines.push('', `⚠️ ${missing.length} entr${missing.length === 1 ? 'y points' : 'ies point'} to missing files (fix the path or context-index.remove):`);
       for (const e of missing) lines.push(`   - ${e.file} ("${e.title}")`);
     }
