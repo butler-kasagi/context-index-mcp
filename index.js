@@ -15,24 +15,30 @@ const WORKSPACE = process.env.CONTEXT_INDEX_WORKSPACE || process.cwd();
 const INDEX_PATH = process.env.CONTEXT_INDEX_PATH || path.join(__dirname, 'index.json');
 
 // Load or init index
+let cachedIndex = null;
 function loadIndex() {
+  if (cachedIndex) return cachedIndex;
   if (fs.existsSync(INDEX_PATH)) {
-    return JSON.parse(fs.readFileSync(INDEX_PATH, 'utf8'));
+    cachedIndex = JSON.parse(fs.readFileSync(INDEX_PATH, 'utf8'));
+    return cachedIndex;
   }
-  return { entries: [] };
+  cachedIndex = { entries: [] };
+  return cachedIndex;
 }
 
 function saveIndex(index) {
   fs.writeFileSync(INDEX_PATH, JSON.stringify(index, null, 2));
+  cachedIndex = index;
 }
 
 // Search: match keywords against entry tags/title/description
 function search(index, query) {
-  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const stripToken = (token) => token.replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, '');
+  const terms = query.toLowerCase().split(/\s+/).map(stripToken).filter(Boolean);
   const scored = index.entries.map(entry => {
-    const tags = (entry.tags || []).map(t => t.toLowerCase());
-    const title = (entry.title || '').toLowerCase();
-    const desc = (entry.description || '').toLowerCase();
+    const tags = (entry.tags || []).map(t => stripToken(t.toLowerCase())).filter(Boolean);
+    const title = stripToken((entry.title || '').toLowerCase());
+    const desc = stripToken((entry.description || '').toLowerCase());
 
     let score = 0;
     for (const term of terms) {
