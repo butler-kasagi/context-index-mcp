@@ -113,6 +113,16 @@ function resolvePath(file) {
   return path.isAbsolute(file) ? file : path.join(WORKSPACE, file);
 }
 
+// The SDK validates the request envelope but not tool arguments, so clients
+// (e.g. mcporter's CLI) can pass tags as a comma-separated string instead of
+// an array. Normalize on both write and read — index.json is also editable
+// by hand, so read paths can't assume clean data.
+function normalizeTags(tags) {
+  if (Array.isArray(tags)) return tags.map(t => String(t).trim()).filter(Boolean);
+  if (typeof tags === 'string') return tags.split(',').map(t => t.trim()).filter(Boolean);
+  return [];
+}
+
 // --- Search ---
 
 function tokenize(text) {
@@ -134,8 +144,9 @@ function search(index, query) {
   if (terms.length === 0) return [];
 
   const scored = index.entries.map(entry => {
-    const tags = (entry.tags || []).map(t => String(t).toLowerCase().trim());
-    const tagWords = (entry.tags || []).flatMap(tokenize);
+    const rawTags = normalizeTags(entry.tags);
+    const tags = rawTags.map(t => t.toLowerCase());
+    const tagWords = rawTags.flatMap(tokenize);
     const titleWords = tokenize(entry.title);
     const descWords = tokenize(entry.description);
     const noteWords = tokenize(entry.note);
@@ -182,7 +193,7 @@ function formatAge(iso) {
 }
 
 const server = new Server(
-  { name: 'context-index', version: '1.1.0' },
+  { name: 'context-index', version: '1.1.1' },
   {
     capabilities: { tools: {} },
     instructions: [
@@ -269,7 +280,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         `   File: ${fullPath}${exists ? '' : '   ⚠️ FILE NOT FOUND — entry may be stale, run context-index.doctor'}`,
         `   Description: ${e.description}`,
         e.note ? `   Latest: ${e.note}` : null,
-        `   Tags: ${(e.tags || []).join(', ')}`,
+        `   Tags: ${normalizeTags(e.tags).join(', ')}`,
         age ? `   Indexed/updated: ${age}` : null,
         exists ? `   → READ: ${fullPath}` : null
       ].filter(Boolean).join('\n');
@@ -285,7 +296,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       ...prev,
       title: args.title,
       file: args.file,
-      tags: args.tags,
+      tags: normalizeTags(args.tags),
       description: args.description,
       updatedAt: new Date().toISOString()
     };
@@ -312,7 +323,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       return { content: [{ type: 'text', text: 'Index is empty. Use context-index.add to add entries.' }] };
     }
     const output = index.entries.map((e, i) =>
-      `${i + 1}. **${e.title}** (${e.file})\n   ${e.description}\n   Tags: ${(e.tags || []).join(', ')}`
+      `${i + 1}. **${e.title}** (${e.file})\n   ${e.description}\n   Tags: ${normalizeTags(e.tags).join(', ')}`
     ).join('\n\n');
     return { content: [{ type: 'text', text: `${index.entries.length} entries:\n\n${output}` }] };
   }
