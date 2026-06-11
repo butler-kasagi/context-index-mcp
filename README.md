@@ -129,43 +129,67 @@ mcporter call context-index add --args '{"title":"...", "file":"context/...", "t
 mcporter call context-index list
 ```
 
-### Multi-Agent Setup (Shared Server, Separate Indexes)
+### Multi-Agent Setup (OpenClaw)
 
-In an OpenClaw multi-agent setup, **each agent has its own workspace directory** and its own `config/mcporter.json`. The key insight is:
+In an OpenClaw multi-agent setup, **each agent has its own workspace directory** and its own `config/mcporter.json`.
 
-- The **server binary** (`index.js`) lives in one place — usually the primary agent's workspace
-- Each agent's **`config/mcporter.json`** points to that shared binary, but overrides the workspace and index path via env vars so each agent reads and writes its own isolated data
+There are two ways to set this up. The **Isolated Copy** method is recommended for secondary AI agents because it is foolproof and prevents accidental overwrites of the primary agent's index.
 
-**Directory layout (real example):**
-```
-~/.openclaw/
-├── workspace/                          ← Butler (primary agent)
-│   ├── config/mcporter.json            ← Butler's mcporter config
-│   ├── mcp-servers/
-│   │   └── context-index/
-│   │       ├── index.js                ← shared server binary (one copy)
-│   │       └── index.json              ← Butler's index data
-│   └── context/
-│       └── *.md                        ← Butler's context files
-│
-├── workspace-starrk/                   ← Starrk (secondary agent)
-│   ├── config/mcporter.json            ← Starrk's mcporter config (separate file!)
-│   ├── mcp-servers/context-index/
-│   │   └── index.json                  ← Starrk's index data (separate!)
-│   └── context/
-│       └── *.md                        ← Starrk's context files
-│
-└── workspace-agent-c/                  ← Agent C (any future agent)
-    ├── config/mcporter.json            ← Agent C's mcporter config
-    ├── mcp-servers/context-index/
-    │   └── index.json                  ← Agent C's index data
-    └── context/
-        └── *.md
+#### Method 1: Isolated Copy (Recommended for Secondary Agents)
+
+Copy the server into the secondary agent's workspace. This ensures `__dirname` resolves locally, so the agent's index data is naturally isolated.
+
+**Step 1: Copy the server into the new workspace**
+```bash
+mkdir -p /absolute/path/to/workspace-agent/mcp-servers/context-index
+cp /absolute/path/to/primary-workspace/mcp-servers/context-index/index.js \
+   /absolute/path/to/workspace-agent/mcp-servers/context-index/index.js
 ```
 
-> **Key rule:** Every workspace has its own `config/mcporter.json`. This is what makes each agent independent — they share the server code but have completely isolated indexes and workspace scopes.
+**Step 2: Install dependencies**
+```bash
+cd /absolute/path/to/workspace-agent/mcp-servers/context-index
+npm init -y
+npm install @modelcontextprotocol/sdk
+```
 
-**Butler's** `~/.openclaw/workspace/config/mcporter.json`:
+**Step 3: Create `config/mcporter.json`**
+```json
+{
+  "mcpServers": {
+    "context-index": {
+      "command": "node",
+      "args": [
+        "/absolute/path/to/workspace-agent/mcp-servers/context-index/index.js"
+      ],
+      "env": {
+        "CONTEXT_INDEX_WORKSPACE": "/absolute/path/to/workspace-agent"
+      }
+    }
+  }
+}
+```
+> ⚠️ **Crucial rules for secondary agents:**
+> - Use **absolute paths everywhere** in the JSON config. Do not use `~` or relative paths like `./`.
+> - If `mcporter` is not installed, install it globally: `npm install -g mcporter`.
+
+**Step 4: Verify the setup**
+Always run from the secondary workspace root:
+```bash
+cd /absolute/path/to/workspace-agent
+mcporter call context-index.doctor
+```
+*Expected healthy output:*
+```
+Index health (0 entries, workspace: /absolute/path/to/workspace-agent [CONTEXT_INDEX_WORKSPACE env var])
+✅ All entries point to existing files, and every context/*.md file is indexed.
+```
+
+#### Method 2: Shared Binary (Advanced)
+
+You can share one `index.js` across all agents. **Warning:** If you use this method, you **must** set `CONTEXT_INDEX_PATH` in every secondary agent's config. If you omit it, the `__dirname` fallback will cause the secondary agent to overwrite the primary agent's `index.json`!
+
+**Butler's (Primary)** `config/mcporter.json`:
 ```json
 {
   "mcpServers": {
@@ -179,9 +203,8 @@ In an OpenClaw multi-agent setup, **each agent has its own workspace directory**
   }
 }
 ```
-*(Set the workspace explicitly even for the primary agent — don't rely on the launcher's cwd)*
 
-**Starrk's** `~/.openclaw/workspace-starrk/config/mcporter.json`:
+**Starrk's (Secondary)** `config/mcporter.json`:
 ```json
 {
   "mcpServers": {
@@ -197,22 +220,6 @@ In an OpenClaw multi-agent setup, **each agent has its own workspace directory**
 }
 ```
 
-**Agent C's** `~/.openclaw/workspace-agent-c/config/mcporter.json`:
-```json
-{
-  "mcpServers": {
-    "context-index": {
-      "command": "node",
-      "args": ["/Users/you/.openclaw/workspace/mcp-servers/context-index/index.js"],
-      "env": {
-        "CONTEXT_INDEX_WORKSPACE": "/Users/you/.openclaw/workspace-agent-c",
-        "CONTEXT_INDEX_PATH": "/Users/you/.openclaw/workspace-agent-c/mcp-servers/context-index/index.json"
-      }
-    }
-  }
-}
-```
-
 **Env vars:**
 
 | Variable | Purpose | Default |
@@ -220,7 +227,7 @@ In an OpenClaw multi-agent setup, **each agent has its own workspace directory**
 | `CONTEXT_INDEX_WORKSPACE` | Root path that file entries resolve against in `lookup` results | Inferred from where index entries resolve / nearest `context/` dir; `process.cwd()` as last resort |
 | `CONTEXT_INDEX_PATH` | Path to the `index.json` data file | `index.json` next to `index.js` |
 
-> **Tip:** If you're setting up a new agent, just start calling `mcporter call context-index add` — the `index.json` is created automatically on the first add. Run `doctor` afterwards to spot any context files you forgot to index.
+> **Tip:** If you're setting up a new agent, just start calling `mcporter call context-index.add` — the `index.json` is created automatically on the first add. Run `doctor` afterwards to spot any context files you forgot to index.
 
 ### With OpenClaw
 
