@@ -13,6 +13,11 @@ const path = require('path');
 
 const INDEX_PATH = process.env.CONTEXT_INDEX_PATH || path.join(__dirname, 'index.json');
 
+// Read-only mode: the write tools (add/remove) are not advertised and are
+// rejected if called anyway. For instances pointed at a shared index that
+// this agent may read but not modify.
+const READONLY = ['1', 'true', 'yes'].includes(String(process.env.CONTEXT_INDEX_READONLY || '').toLowerCase());
+
 // Workspace resolution. CONTEXT_INDEX_WORKSPACE always wins; without it the
 // launcher's cwd is unreliable (MCP clients spawn servers from arbitrary
 // directories), so infer the root from evidence instead of trusting cwd:
@@ -199,11 +204,15 @@ const server = new Server(
     instructions: [
       'Keyword → file-path index for this workspace\'s context files (workflows, tool docs, credential references, SOPs).',
       'Call lookup FIRST before guessing at workflow steps or configs — it returns file paths to read for exact instructions.',
-      'After creating or significantly changing a context file, call add to index it so future sessions can find it.',
+      READONLY
+        ? 'This instance is READ-ONLY: you can lookup and list, but not add or remove entries.'
+        : 'After creating or significantly changing a context file, call add to index it so future sessions can find it.',
       'Run doctor occasionally to find stale entries (missing files) and unindexed context files.'
     ].join(' ')
   }
 );
+
+const WRITE_TOOLS = ['add', 'remove'];
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
@@ -259,11 +268,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: { type: 'object', properties: {} },
       annotations: { readOnlyHint: true }
     }
-  ]
+  ].filter(t => !READONLY || !WRITE_TOOLS.includes(t.name))
 }));
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
+
+  if (READONLY && WRITE_TOOLS.includes(name)) {
+    throw new Error(
+      `This context-index instance is read-only (CONTEXT_INDEX_READONLY is set) — "${name}" is not available. ` +
+      'Changes to this shared index are made only by its owning agent.'
+    );
+  }
+
   const index = loadIndex();
 
   if (name === 'lookup') {
@@ -362,7 +379,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       for (const e of missing) lines.push(`   - ${e.file} ("${e.title}")`);
     }
     if (unindexed.length > 0) {
-      lines.push('', `📂 ${unindexed.length} context file(s) not in the index (document with context-index.add):`);
+      lines.push('', `📂 ${unindexed.length} context file(s) not in the index (${READONLY ? 'read-only instance — report to the index owner' : 'document with context-index.add'}):`);
       for (const f of unindexed) lines.push(`   - ${f}`);
     }
     if (missing.length === 0 && unindexed.length === 0) {
