@@ -130,6 +130,7 @@ Share one `index.js` across agents.
 |---|---|---|
 | `CONTEXT_INDEX_WORKSPACE` | Root path for `file` entries in lookup results. | Inferred from entries / `context/` dir / `process.cwd()`. |
 | `CONTEXT_INDEX_PATH` | Path to `index.json` data file. | `index.json` next to `index.js`. |
+| `CONTEXT_INDEX_READONLY` | `1`/`true`: read-only instance — `add`/`remove` are hidden from the tool list and rejected if called. For an index this agent may read but not modify (e.g. a shared index owned by another agent). | Off (read/write). |
 
 ### With OpenClaw / Claude Desktop
 
