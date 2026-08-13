@@ -198,7 +198,7 @@ function formatAge(iso) {
 }
 
 const server = new Server(
-  { name: 'context-index', version: '1.1.1' },
+  { name: 'context-index', version: '1.2.0' },
   {
     capabilities: { tools: {} },
     instructions: [

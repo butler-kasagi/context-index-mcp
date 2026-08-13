@@ -1,6 +1,6 @@
 {
   "name": "context-index-mcp",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Lightweight keyword-to-file context index MCP server for AI agents",
   "main": "index.js",
   "scripts": {
